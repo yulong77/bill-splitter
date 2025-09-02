@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bill Splitter — Split Tax & Tip Proportionally</title>
+  <style>
+    :root{--bg:#0b0f14;--fg:#e8f0f7;--muted:#9fb3c8;--card:#10161d;--accent:#8cd2ff;--good:#47d18c;--bad:#ff6b6b;--warn:#ffd166;--border:#233040}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--fg);background:linear-gradient(180deg,#0b0f14,#0f1822)}
+    .container{max-width:980px;margin:0 auto;padding:24px}
+    h1{font-size:24px;margin:0 0 8px}
+    h2{font-size:18px;margin:16px 0 8px;color:var(--muted)}
+    p{color:var(--muted);margin:8px 0}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.25)}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .grow{flex:1 1 240px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#0f141b;color:var(--fg);outline:none}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(140,210,255,.2)}
+    button{appearance:none;border:1px solid var(--border);background:#14202b;color:var(--fg);padding:10px 14px;border-radius:12px;cursor:pointer;transition:transform .02s ease;display:inline-flex;align-items:center;gap:8px}
+    button:hover{border-color:var(--accent)}
+    button:active{transform:translateY(1px)}
+    .btn-primary{background:linear-gradient(180deg,#1d88f1,#1764c2);border-color:#1b6ccf}
+    .btn-ghost{background:transparent}
+    .btn-danger{background:#3a1111;border-color:#5b1a1a}
+    table{width:100%;border-collapse:collapse;border-spacing:0}
+    th,td{padding:10px;border-bottom:1px dashed var(--border);text-align:left}
+    th{font-weight:600;color:var(--muted)}
+    tr:last-child td{border-bottom:none}
+    .right{text-align:right}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#0f141b;border:1px solid var(--border);font-size:12px;color:var(--muted)}
+    .totals{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
+    .totals .pill{background:#0e1621}
+    .footer{opacity:.7;font-size:12px;margin-top:24px}
+    .link{color:var(--accent);text-decoration:none}
+    .success{color:var(--good)}
+    .warn{color:var(--warn)}
+    .error{color:var(--bad)}
+    .flex{display:flex;gap:8px;align-items:center}
+    .hint{font-size:12px;color:var(--muted)}
+    .badge{font-size:12px;background:#1a2633;border:1px solid var(--border);padding:2px 8px;border-radius:999px;margin-left:6px}
+    .spacer{height:6px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Bill Splitter <span class="badge">Proportional Split of Tax & Tip</span></h1>
+    <p>Usage: Each person enters their <strong>pre-tax subtotal</strong>. The Manager must enter the final <strong>paid total</strong> (including tax & tip). Optionally, tax and tip percentages can be provided for reference. The system splits proportionally and uses the "largest remainder method" to ensure final rounded amounts (to cents) add up exactly to the total.</p>
+
+    <div class="card">
+      <h2>1) People & Subtotals</h2>
+      <div class="row" id="addRow">
+        <div class="grow">
+          <label>Name</label>
+          <input id="nameInput" type="text" placeholder="e.g. Yulong" />
+        </div>
+        <div style="width:200px">
+          <label>Pre-tax subtotal</label>
+          <input id="amountInput" type="number" step="0.01" min="0" placeholder="e.g. 23.50" />
+        </div>
+        <div style="width:180px;align-self:end">
+          <button class="btn-primary" id="addBtn">+ Add</button>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <table id="peopleTable">
+        <thead>
+          <tr>
+            <th style="width:40%">Name</th>
+            <th class="right" style="width:20%">Subtotal</th>
+            <th style="width:20%">Note</th>
+            <th class="right" style="width:20%">Action</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="totals" id="preTotals"></div>
+      <div class="row" style="margin-top:12px">
+        <div class="grow">
+          <button class="btn-ghost" id="importBtn">Import…</button>
+          <button class="btn-ghost" id="exportBtn">Export</button>
+          <button class="btn-danger" id="clearBtn">Clear</button>
+          <button class="btn-danger" id="wipeBtn" title="Remove all local data, including totals and results">Delete All Data</button>
+        </div>
+        <div class="grow right hint">Data is automatically saved in local browser (localStorage).</div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <h2>2) Total & Split</h2>
+      <div class="row">
+        <div class="grow" style="max-width:240px">
+          <label>Paid Total (incl. tax & tip) <span style="color:red">*</span></label>
+          <input id="grandTotal" type="number" step="0.01" min="0" placeholder="e.g. 256.78" required />
+        </div>
+        <div class="grow" style="max-width:220px">
+          <label>Optional: Tax %</label>
+          <input id="taxRate" type="number" step="0.01" min="0" placeholder="e.g. 8.875" />
+        </div>
+        <div class="grow" style="max-width:220px">
+          <label>Optional: Tip %</label>
+          <input id="tipRate" type="number" step="0.01" min="0" placeholder="e.g. 15" />
+        </div>
+        <div style="align-self:end">
+          <button class="btn-primary" id="calcBtn">= Calculate</button>
+        </div>
+      </div>
+      <p class="hint">Paid Total is required. Tax% and Tip% are optional and only shown for reference; calculation always uses proportional split based on the paid total.</p>
+
+      <div id="results"></div>
+    </div>
+
+    <div class="footer">Made for GitHub Pages · Single static page, no backend required. Fork to your own repo and publish directly.</div>
+  </div>
+
+  <input type="file" id="fileInput" accept="application/json" hidden>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const tbody = $('#tbody');
+    const preTotals = $('#preTotals');
+    let people = load() || [];
+
+    function money(n){
+      return (Math.round((Number(n)||0)*100)/100).toFixed(2)
+    }
+
+    function render(){
+      tbody.innerHTML = people.map((p,i)=>`
+        <tr>
+          <td>${escapeHtml(p.name||'')}</td>
+          <td class="right">$${money(p.amount)}</td>
+          <td>${escapeHtml(p.note||'')}</td>
+          <td class="right">
+            <button data-i="${i}" class="btn-ghost edit">Edit</button>
+            <button data-i="${i}" class="btn-danger del">Delete</button>
+          </td>
+        </tr>`).join('');
+
+      const sum = people.reduce((a,b)=>a+(Number(b.amount)||0),0);
+      preTotals.innerHTML = `
+        <span class="pill">People: ${people.length}</span>
+        <span class="pill">Subtotal sum: $${money(sum)}</span>`;
+      save();
+    }
+
+    function escapeHtml(s){
+      return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]))
+    }
+
+    function save(){ localStorage.setItem('bill_split_people', JSON.stringify(people)) }
+    function load(){ try{ return JSON.parse(localStorage.getItem('bill_split_people')||'[]') }catch{ return [] } }
+
+    $('#addBtn').addEventListener('click',()=>{
+      const name = $('#nameInput').value.trim();
+      const amt = Number($('#amountInput').value);
+      if(!name){ alert('Please enter name'); return }
+      if(!(amt>=0)){ alert('Please enter valid amount'); return }
+      people.push({name, amount: amt, note:''});
+      $('#nameInput').value='';
+      $('#amountInput').value='';
+      render();
+    });
+
+    tbody.addEventListener('click', e=>{
+      const i = e.target.getAttribute('data-i');
+      if(i===null) return;
+      if(e.target.classList.contains('del')){ people.splice(Number(i),1); render(); return; }
+      if(e.target.classList.contains('edit')){
+        const p = people[i];
+        const name = prompt('Name', p.name);
+        if(name===null) return;
+        const amt = prompt('Subtotal (pre-tax)', p.amount);
+        if(amt===null) return;
+        const note = prompt('Note (optional)', p.note||'');
+        if(name.trim()==='' || !(Number(amt)>=0)) return alert('Invalid input');
+        people[i] = {name: name.trim(), amount: Number(amt), note: note||''};
+        render();
+      }
+    });
+
+    $('#clearBtn').addEventListener('click',()=>{ if(confirm('Clear all people & amounts?')){ people = []; render(); } });
+
+    $('#wipeBtn').addEventListener('click',()=>{
+      if(!confirm('Permanently delete ALL data on this device? This will clear the list, totals, localStorage and results.')) return;
+      people = [];
+      localStorage.removeItem('bill_split_people');
+      render();
+      ['grandTotal','taxRate','tipRate'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+      showResults('');
+      toast('All data deleted');
+    });
+
+    $('#exportBtn').addEventListener('click',()=>{
+      const blob=new Blob([JSON.stringify({people},null,2)],{type:'application/json'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bill-splitter-data.json';a.click();URL.revokeObjectURL(a.href);
+    });
+
+    $('#importBtn').addEventListener('click',()=>$('#fileInput').click());
+    $('#fileInput').addEventListener('change',async e=>{
+      const f=e.target.files[0];if(!f) return;
+      try{const text=await f.text();const data=JSON.parse(text);
+        if(Array.isArray(data.people)){ people=data.people.map(x=>({name:String(x.name||''),amount:Number(x.amount)||0,note:String(x.note||'')}));render(); }
+        else alert('Invalid file format');
+      }catch(err){ alert('Import failed: '+err.message) }
+      e.target.value='';
+    });
+
+    function calcProportional(grandTotal){
+      const base=people.map(p=>Number(p.amount)||0);
+      const sumBase=base.reduce((a,b)=>a+b,0);
+      if(!(grandTotal>0)) throw new Error('Please enter valid paid total (>0)');
+      if(sumBase<=0) throw new Error('Subtotal sum must be >0');
+      const raw=base.map(x=>grandTotal*x/sumBase);
+      const flooredCents=raw.map(x=>Math.floor(x*100));
+      const sumFloored=flooredCents.reduce((a,b)=>a+b,0);
+      let remainder=Math.round(grandTotal*100)-sumFloored;
+      const order=raw.map((x,i)=>({i,frac:x*100-Math.floor(x*100)})).sort((a,b)=>b.frac-a.frac);
+      for(let k=0;k<order.length&&remainder>0;k++){flooredCents[order[k].i]+=1;remainder--;}
+      return flooredCents.map(c=>c/100);
+    }
+
+    $('#calcBtn').addEventListener('click',()=>{
+      const grand=Number($('#grandTotal').value);
+      const taxPct=$('#taxRate').value.trim();
+      const tipPct=$('#tipRate').value.trim();
+      let shares;
+      try{ shares=calcProportional(grand); }catch(err){ return showResults('<p class="error">⚠️ '+escapeHtml(err.message)+'</p>'); }
+      const res=people.map((p,i)=>({name:p.name,note:p.note,base:Number(p.amount)||0,pay:shares[i]}));
+      const sumBase=res.reduce((a,b)=>a+b.base,0);
+      const sumPay=res.reduce((a,b)=>a+b.pay,0);
+      const rows=res.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="right">$${money(r.base)}</td><td class="right">$${money(r.pay)}</td><td class="right">$${money(r.pay-r.base)}</td></tr>`).join('');
+      showResults(`<p><span class="pill">Method: Proportional split (largest remainder method)</span></p>
+        <table><thead><tr><th>Name</th><th class="right">Subtotal</th><th class="right">Pay</th><th class="right">Tax+Tip</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="totals"><span class="pill">Subtotal sum: $${money(sumBase)}</span><span class="pill">Pay sum: $${money(sumPay)}</span>${(taxPct!==''||tipPct!=='')?`<span class="pill">Tax: ${taxPct||0}%</span><span class="pill">Tip: ${tipPct||0}%</span>`:''}</div>
+        <div class="row" style="margin-top:12px"><div class="grow"></div><div><button id="copyBtn">Copy Table</button><button id="downloadBtn">Download CSV</button></div></div>`);
+      $('#copyBtn')?.addEventListener('click',()=>{
+        const lines=['Name,Subtotal,Pay,Tax+Tip'].concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
+        const text=lines.join('\n');navigator.clipboard.writeText(text).then(()=>{toast('Copied to clipboard');}).catch(()=>alert('Copy failed'));
+      });
+      $('#downloadBtn')?.addEventListener('click',()=>{
+        const lines=['Name,Subtotal,Pay,Tax+Tip'].concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
+        const blob=new Blob(["\ufeff"+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bill-split.csv';a.click();URL.revokeObjectURL(a
