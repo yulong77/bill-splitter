@@ -156,15 +156,44 @@
     function save(){ localStorage.setItem('bill_split_people', JSON.stringify(people)) }
     function load(){ try{ return JSON.parse(localStorage.getItem('bill_split_people')||'[]') }catch{ return [] } }
 
-    $('#addBtn').addEventListener('click',()=>{
-      const name = $('#nameInput').value.trim();
-      const amt = Number($('#amountInput').value);
-      if(!name){ alert('Please enter name'); return }
-      if(!(amt>=0)){ alert('Please enter valid amount'); return }
-      people.push({name, amount: amt, note:''});
-      $('#nameInput').value='';
-      $('#amountInput').value='';
-      render();
+    document.addEventListener('DOMContentLoaded', () => {
+      const addBtn = $('#addBtn');
+      if(addBtn) {
+        addBtn.addEventListener('click', () => {
+          console.log('Add button clicked'); // Debug log
+          const nameInput = $('#nameInput');
+          const amountInput = $('#amountInput');
+          
+          if(!nameInput || !amountInput) {
+            console.error('Input elements not found');
+            return;
+          }
+          
+          const name = nameInput.value.trim();
+          const amt = Number(amountInput.value);
+          
+          console.log('Input values:', {name, amt}); // Debug log
+          
+          if(!name) { 
+            alert('Please enter name'); 
+            return; 
+          }
+          if(!(amt>=0)) { 
+            alert('Please enter valid amount'); 
+            return; 
+          }
+          
+          try {
+            people.push({name, amount: amt, note:''});
+            nameInput.value = '';
+            amountInput.value = '';
+            console.log('Person added:', {name, amount: amt}); // Debug log
+            render();
+          } catch(err) {
+            console.error('Error adding person:', err);
+          }
+        });
+      }
     });
 
     tbody.addEventListener('click', e=>{
