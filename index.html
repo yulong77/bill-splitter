@@ -198,16 +198,28 @@
 
     $('#exportBtn').addEventListener('click',()=>{
       const blob=new Blob([JSON.stringify({people},null,2)],{type:'application/json'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bill-splitter-data.json';a.click();URL.revokeObjectURL(a.href);
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='bill-splitter-data.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
     });
 
     $('#importBtn').addEventListener('click',()=>$('#fileInput').click());
     $('#fileInput').addEventListener('change',async e=>{
       const f=e.target.files[0];if(!f) return;
-      try{const text=await f.text();const data=JSON.parse(text);
-        if(Array.isArray(data.people)){ people=data.people.map(x=>({name:String(x.name||''),amount:Number(x.amount)||0,note:String(x.note||'')}));render(); }
-        else alert('Invalid file format');
-      }catch(err){ alert('Import failed: '+err.message) }
+      try{
+        const text=await f.text();
+        const data=JSON.parse(text);
+        if(Array.isArray(data.people)){
+          people=data.people.map(x=>({name:String(x.name||''),amount:Number(x.amount)||0,note:String(x.note||'')}));
+          render();
+        }else{
+          alert('Invalid file format');
+        }
+      }catch(err){
+        alert('Import failed: '+err.message)
+      }
       e.target.value='';
     });
 
@@ -230,20 +242,71 @@
       const taxPct=$('#taxRate').value.trim();
       const tipPct=$('#tipRate').value.trim();
       let shares;
-      try{ shares=calcProportional(grand); }catch(err){ return showResults('<p class="error">⚠️ '+escapeHtml(err.message)+'</p>'); }
+      try{
+        shares=calcProportional(grand);
+      }catch(err){
+        return showResults('<p class="error">⚠️ '+escapeHtml(err.message)+'</p>');
+      }
       const res=people.map((p,i)=>({name:p.name,note:p.note,base:Number(p.amount)||0,pay:shares[i]}));
       const sumBase=res.reduce((a,b)=>a+b.base,0);
       const sumPay=res.reduce((a,b)=>a+b.pay,0);
       const rows=res.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="right">$${money(r.base)}</td><td class="right">$${money(r.pay)}</td><td class="right">$${money(r.pay-r.base)}</td></tr>`).join('');
-      showResults(`<p><span class="pill">Method: Proportional split (largest remainder method)</span></p>
-        <table><thead><tr><th>Name</th><th class="right">Subtotal</th><th class="right">Pay</th><th class="right">Tax+Tip</th></tr></thead><tbody>${rows}</tbody></table>
-        <div class="totals"><span class="pill">Subtotal sum: $${money(sumBase)}</span><span class="pill">Pay sum: $${money(sumPay)}</span>${(taxPct!==''||tipPct!=='')?`<span class="pill">Tax: ${taxPct||0}%</span><span class="pill">Tip: ${tipPct||0}%</span>`:''}</div>
-        <div class="row" style="margin-top:12px"><div class="grow"></div><div><button id="copyBtn">Copy Table</button><button id="downloadBtn">Download CSV</button></div></div>`);
+      showResults(
+        `<p><span class="pill">Method: Proportional split (largest remainder method)</span></p>
+         <table>
+           <thead><tr><th>Name</th><th class="right">Subtotal</th><th class="right">Pay</th><th class="right">Tax+Tip</th></tr></thead>
+           <tbody>${rows}</tbody>
+         </table>
+         <div class="totals">
+           <span class="pill">Subtotal sum: $${money(sumBase)}</span>
+           <span class="pill">Pay sum: $${money(sumPay)}</span>
+           ${(taxPct!==''||tipPct!=='')?`<span class="pill">Tax: ${taxPct||0}%</span><span class="pill">Tip: ${tipPct||0}%</span>`:''}
+         </div>
+         <div class="row" style="margin-top:12px">
+           <div class="grow"></div>
+           <div>
+             <button id="copyBtn">Copy Table</button>
+             <button id="downloadBtn">Download CSV</button>
+           </div>
+         </div>`
+      );
       $('#copyBtn')?.addEventListener('click',()=>{
-        const lines=['Name,Subtotal,Pay,Tax+Tip'].concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
-        const text=lines.join('\n');navigator.clipboard.writeText(text).then(()=>{toast('Copied to clipboard');}).catch(()=>alert('Copy failed'));
+        const lines=['Name,Subtotal,Pay,Tax+Tip']
+          .concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
+        const text=lines.join('\n');
+        navigator.clipboard.writeText(text)
+          .then(()=>{toast('Copied to clipboard');})
+          .catch(()=>alert('Copy failed'));
       });
       $('#downloadBtn')?.addEventListener('click',()=>{
-        const lines=['Name,Subtotal,Pay,Tax+Tip'].concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
+        const lines=['Name,Subtotal,Pay,Tax+Tip']
+          .concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
         const blob=new Blob(["\ufeff"+lines.join('\n')],{type:'text/csv;charset=utf-8'});
-        const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bill-split.csv';a.click();URL.revokeObjectURL(a
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download='bill-split.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    });
+
+    function csv(s){
+      s = String(s||'');
+      if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+      return s;
+    }
+
+    function showResults(html){
+      document.getElementById('results').innerHTML = html;
+    }
+
+    function toast(msg){
+      const t=document.createElement('div');
+      t.textContent=msg;
+      t.style.cssText='position:fixed;left:50%;top:24px;transform:translateX(-50%);background:#122234;color:#cfe8ff;border:1px solid #2a3b52;padding:8px 12px;border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,.4);z-index:9999';
+      document.body.appendChild(t);
+      setTimeout(()=>t.remove(),1400);
+    }
+  </script>
+</body>
+</html>
