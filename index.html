@@ -121,6 +121,10 @@
   <input type="file" id="fileInput" accept="application/json" hidden>
 
   <script>
+    const AWS_CONFIG = {
+      API_ENDPOINT: 'https://k313ovpojf.execute-api.us-east-1.amazonaws.com/prod/'
+    };
+
     const $ = sel => document.querySelector(sel);
     const tbody = $('#tbody');
     const preTotals = $('#preTotals');
@@ -153,8 +157,53 @@
       return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]))
     }
 
-    function save(){ localStorage.setItem('bill_split_people', JSON.stringify(people)) }
-    function load(){ try{ return JSON.parse(localStorage.getItem('bill_split_people')||'[]') }catch{ return [] } }
+    async function save() {
+      // 需要添加错误处理和响应验证
+      try {
+        console.log('Saving data:', people); // 添加调试日志
+        const response = await fetch(AWS_CONFIG.API_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json' // 添加 Accept 头
+          },
+          body: JSON.stringify({ people: people }) // 确保数据格式正确
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Save failed:', response.status, errorText);
+          throw new Error(`Save failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Save success:', result);
+      } catch (err) {
+        console.error('Save error:', err);
+      }
+    }
+
+    async function load() {
+      try {
+        // try cloud load first
+        const response = await fetch(AWS_CONFIG.API_ENDPOINT);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.people && data.people.length > 0) {
+            return data.people;
+          }
+        }
+      } catch (err) {
+        console.error('Cloud load failed:', err);
+      }
+      
+      // fallback to localStorage
+      try {
+        return JSON.parse(localStorage.getItem('bill_split_people') || '[]');
+      } catch {
+        return [];
+      }
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       const addBtn = $('#addBtn');
@@ -336,6 +385,11 @@
       document.body.appendChild(t);
       setTimeout(()=>t.remove(),1400);
     }
+
+    window.onload = async () => {
+      people = await load();
+      render();
+    };
   </script>
 </body>
 </html>

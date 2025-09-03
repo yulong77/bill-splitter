@@ -1,0 +1,20 @@
+{
+  "name": "bill-splitter",
+  "version": "1.0.0",
+  "description": "Split a restaurant bill proportionally by subtotal, using the paid total (incl. tax &amp; tip).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yulong77/bill-splitter.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yulong77/bill-splitter/issues"
+  },
+  "homepage": "https://github.com/yulong77/bill-splitter#readme"
+}
