@@ -158,28 +158,28 @@
     }
 
     async function save() {
-      // 需要添加错误处理和响应验证
       try {
-        console.log('Saving data:', people); // 添加调试日志
+        // 先尝试云存储
+        console.log('Saving to cloud:', { people });
         const response = await fetch(AWS_CONFIG.API_ENDPOINT, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json' // 添加 Accept 头
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ people: people }) // 确保数据格式正确
+          body: JSON.stringify({ people })
         });
         
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Save failed:', response.status, errorText);
-          throw new Error(`Save failed: ${response.status}`);
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const result = await response.json();
-        console.log('Save success:', result);
+        // 云存储成功后再保存到本地
+        localStorage.setItem('bill_split_people', JSON.stringify(people));
+        console.log('Save successful');
       } catch (err) {
-        console.error('Save error:', err);
+        console.error('Save failed:', err);
+        // 云存储失败时也保存到本地
+        localStorage.setItem('bill_split_people', JSON.stringify(people));
       }
     }
 
