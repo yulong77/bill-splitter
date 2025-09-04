@@ -1,87 +1,51 @@
+// lib/cdk-stack.ts
 import * as cdk from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import { Construct } from 'constructs';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { RemovalPolicy } from 'aws-cdk-lib';
 
-export class CdkStack extends cdk.Stack {
+export class BillSplitStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // DynamoDB Table
-    const table = new dynamodb.Table(this, 'BillSplitterTable', {
+    // 1) DynamoDB 表：主键 id(String)
+    const table = new dynamodb.Table(this, 'PeopleTable', {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: RemovalPolicy.DESTROY, // 开发期方便；生产建议 RETAIN
     });
 
-    // Lambda Function
-    const handler = new lambda.Function(this, 'BillSplitterHandler', {
+    // 2) Lambda：注入表名
+    const fn = new lambda.Function(this, 'PeopleFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset('lambda'),
-      environment: {
-        TABLE_NAME: table.tableName,
+      code: lambda.Code.fromAsset('lambda'), // 指向 lambda/index.js 所在目录
+      environment: { TABLE_NAME: table.tableName },
+    });
+
+    // 授权读写表
+    table.grantReadWriteData(fn);
+
+    // 3) HTTP API + CORS 预检
+    const api = new apigwv2.HttpApi(this, 'Api', {
+      corsPreflight: {
+        allowOrigins: ['*'],
+        allowHeaders: ['Content-Type'],
+        allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.POST, apigwv2.CorsHttpMethod.OPTIONS],
       },
     });
 
-    // Grant Lambda permissions to DynamoDB
-    table.grantReadWriteData(handler);
-
-    // API Gateway
-    const api = new apigateway.RestApi(this, 'BillSplitterApi', {
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-      },
+    // 4) 路由：根路径 ANY 指到 Lambda
+    api.addRoutes({
+      path: '/',
+      methods: [apigwv2.HttpMethod.ANY],
+      integration: new integrations.HttpLambdaIntegration('LambdaInt', fn),
     });
 
-    api.root.addMethod('GET', new apigateway.LambdaIntegration(handler));
-    api.root.addMethod('POST', new apigateway.LambdaIntegration(handler));
-
-    // S3 Bucket for static website
-    const websiteBucket = new s3.Bucket(this, 'BillSplitterWebsite', {
-      websiteIndexDocument: 'index.html',
-      publicReadAccess: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      blockPublicAccess: new s3.BlockPublicAccess({
-        blockPublicAcls: false,
-        blockPublicPolicy: false,
-        ignorePublicAcls: false,
-        restrictPublicBuckets: false
-      })
-    });
-
-    // CloudFront Distribution
-    const distribution = new cloudfront.Distribution(this, 'BillSplitterDistribution', {
-      defaultBehavior: {
-        origin: new origins.S3Origin(websiteBucket, {
-          originAccessIdentity: new cloudfront.OriginAccessIdentity(this, 'BillSplitterOAI')
-        }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-      },
-    });
-
-    // Deploy static files to S3 - 修改部署配置
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset('../', {
-        exclude: ['cdk', 'node_modules', '.git', 'cdk.out'] // 排除不需要的文件夹
-      })],
-      destinationBucket: websiteBucket,
-      distribution,
-    });
-
-    // Output the CloudFront URL and API URL
-    new cdk.CfnOutput(this, 'CloudFrontURL', {
-      value: `https://${distribution.distributionDomainName}`,
-    });
-
-    new cdk.CfnOutput(this, 'ApiURL', {
-      value: api.url,
-    });
+    // 输出 URL（注意：末尾一般就是 / ，没有 /prod）
+    new cdk.CfnOutput(this, 'HttpApiUrl', { value: api.apiEndpoint });
   }
 }
