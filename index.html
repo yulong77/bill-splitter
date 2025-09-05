@@ -89,6 +89,18 @@
       background:#f2f4f7;
       border-color:#cfd8e3;
     }
+
+    .btn-success {
+      background: #d4f6e6;
+      border: 1px solid #9edbb8;
+      color: #065f46;
+    }
+    
+    .btn-success:hover {
+      border-color: #34d399;
+      background: #a7f3d0;
+    }    
+
     .btn-danger{
       background:#fee2e2;
       border-color:#f5c2c2;
@@ -130,6 +142,7 @@
       border-radius:999px;
     }
     .spacer{height:6px}
+
   </style>
 </head>
 
@@ -174,9 +187,6 @@
       </table>
       <div class="totals" id="preTotals"></div>
       <div class="row" style="margin-top:12px">
-        <div class="grow">
-          <button class="btn-danger" id="wipeBtn" title="Remove all local data, including totals and results">Delete All Data</button>
-        </div>
         <div class="grow right hint">Data is automatically saved in local browser (localStorage).</div>
       </div>
     </div>
@@ -239,7 +249,7 @@
           <td class="col-note">${escapeHtml(p.note||'')}</td>
           <td class="right">
             <button data-i="${i}" class="btn-ghost edit">Edit</button>
-            <button data-i="${i}" class="btn-danger del">Delete</button>
+            <button data-i="${i}" class="btn-danger del"  style="margin-left:8px;">Delete</button>
           </td>
         </tr>`).join('');
 
@@ -366,16 +376,6 @@
     });
 
 
-    $('#wipeBtn').addEventListener('click',()=>{
-      if(!confirm('Permanently delete all data on this device? This will clear the list, totals, localStorage and results.')) return;
-      people = [];
-      localStorage.removeItem('bill_split_people');
-      render();
-      ['grandTotal','taxRate','tipRate'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-      showResults('');
-      toast('All data deleted');
-    });
-
     function calcProportional(grandTotal){
       const base=people.map(p=>Number(p.amount)||0);
       const sumBase=base.reduce((a,b)=>a+b,0);
@@ -389,6 +389,20 @@
       for(let k=0;k<order.length&&remainder>0;k++){flooredCents[order[k].i]+=1;remainder--;}
       return flooredCents.map(c=>c/100);
     }
+
+    function wipeAll() {
+      if(!confirm('Permanently delete all data on this device? This will clear the list, totals, localStorage and results.')) return;
+      people = [];
+      localStorage.removeItem('bill_split_people');
+      render();
+      ['grandTotal','taxRate','tipRate'].forEach(id=>{
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      showResults('');
+      toast('All data deleted');
+    }
+
 
     $('#calcBtn').addEventListener('click',()=>{
       const grand=Number($('#grandTotal').value);
@@ -432,7 +446,8 @@
          <div class="row" style="margin-top:12px">
            <div class="grow"></div>
            <div>
-             <button id="downloadBtn">Download CSV</button>
+            <button id="wipeBtnResults" class="btn-danger">Delete All Data</button>
+            <button id="downloadBtn" class="btn-success"  style="margin-left:12px;">Download CSV</button>
            </div>
          </div>`
       );
@@ -446,6 +461,8 @@
         a.click();
         URL.revokeObjectURL(a.href);
       });
+
+      document.getElementById('wipeBtnResults')?.addEventListener('click', wipeAll);
       
     });
 
