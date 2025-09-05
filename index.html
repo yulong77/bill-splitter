@@ -32,6 +32,11 @@
     .row{display:flex;gap:12px;flex-wrap:wrap}
     .grow{flex:1 1 240px}
     label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+
+    .col-name   { width: 30%; }
+    .col-sub    { width: 20%; text-align: right; }
+    .col-note   { width: 20%; text-align: right; }
+    .col-action { width: 30%; text-align: right; }
     
     input[type="text"],input[type="number"],select,textarea{
       width:100%;
@@ -127,6 +132,7 @@
     .spacer{height:6px}
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>Bill Splitter </h1>
@@ -136,15 +142,15 @@
       <h2>People & Subtotals</h2>
       <div class="row" id="addRow">
         <div class="grow">
-          <label>Name</label>
+          <label>Name<span style="color:red">*</span></label>
           <input id="nameInput" type="text" placeholder="e.g. Rick" />
         </div>
         <div style="width:200px">
-          <label>Pre-tax subtotal</label>
+          <label>Pre-tax subtotal<span style="color:red">*</span></label>
           <input id="amountInput" type="number" step="0.01" min="0" placeholder="e.g. 18.99" />
         </div>
         <div style="width:180px;align-self:end">
-          <button class="btn-primary" id="addBtn">+ Add</button>
+          <button class="btn-primary" id="addBtn" style="width:120px; justify-content:center;">Add</button>
         </div>
       </div>
 
@@ -152,10 +158,10 @@
       <table id="peopleTable">
         <thead>
           <tr>
-            <th style="width:40%">Name</th>
-            <th class="right" style="width:20%">Subtotal</th>
-            <th style="width:20%">Note</th>
-            <th class="right" style="width:20%">Action</th>
+            <th class="col-name">Name</th>
+            <th class="col-sub">Subtotal</th>
+            <th class="col-note">Note</th>
+            <th class="col-action">Action</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -163,8 +169,6 @@
       <div class="totals" id="preTotals"></div>
       <div class="row" style="margin-top:12px">
         <div class="grow">
-          <!-- 只保留这两个按钮 -->
-          <button class="btn-danger" id="clearBtn">Clear</button>
           <button class="btn-danger" id="wipeBtn" title="Remove all local data, including totals and results">Delete All Data</button>
         </div>
         <div class="grow right hint">Data is automatically saved in local browser (localStorage).</div>
@@ -175,6 +179,9 @@
 
     <div class="card">
       <h2>Total & Split</h2>
+      <p class="hint" style="color:red; font-weight:bold;">
+        For the final payer only.
+      </p>
       <div class="row">
         <div class="grow" style="max-width:240px">
           <label>Paid Total (incl. tax & tip) <span style="color:red">*</span></label>
@@ -189,15 +196,20 @@
           <input id="tipRate" type="number" step="0.01" min="0" placeholder="e.g. 15" />
         </div>
         <div style="align-self:end">
-          <button class="btn-primary" id="calcBtn">= Calculate</button>
+          <button class="btn-primary" id="calcBtn" style="width:120px; justify-content:center;">Calculate</button>
         </div>
       </div>
-      <p class="hint">Paid Total is required. Tax% and Tip% are optional and only shown for reference; calculation always uses proportional split based on the paid total.</p>
-
+      <p class="hint"><br>Paid Total is required.</p>
+      <p class="hint">Tax% and Tip% are optional and only shown for reference.</p>
+      <p class="hint">
+        Bills are split proportionally by subtotal using. Final rounding is handled with the Largest Remainder Method so the total always matches.
+      </p>
       <div id="results"></div>
     </div>
 
-    <div class="footer">Made for GitHub Pages · Single static page, no backend required. Fork to your own repo and publish directly.</div>
+    <div class="footer">
+      © 2025 Yulong · Bill Splitter · All rights reserved.
+    </div>
   </div>
 
   <script>
@@ -219,7 +231,7 @@
         <tr>
           <td>${escapeHtml(p.name||'')}</td>
           <td class="right">$${money(p.amount)}</td>
-          <td>${escapeHtml(p.note||'')}</td>
+          <td class="col-note">${escapeHtml(p.note||'')}</td>
           <td class="right">
             <button data-i="${i}" class="btn-ghost edit">Edit</button>
             <button data-i="${i}" class="btn-danger del">Delete</button>
@@ -321,7 +333,7 @@
             render();
           } catch(err) {
             console.error('Save failed:', err);
-            alert('Save failed: ' + (err?.message || err)); // ← 调试期可加
+            alert('Save failed: ' + (err?.message || err));
             localStorage.setItem('bill_split_people', JSON.stringify(people));
           }
         });
@@ -345,10 +357,9 @@
       }
     });
 
-    $('#clearBtn').addEventListener('click',()=>{ if(confirm('Clear all people & amounts?')){ people = []; render(); } });
 
     $('#wipeBtn').addEventListener('click',()=>{
-      if(!confirm('Permanently delete ALL data on this device? This will clear the list, totals, localStorage and results.')) return;
+      if(!confirm('Permanently delete all data on this device? This will clear the list, totals, localStorage and results.')) return;
       people = [];
       localStorage.removeItem('bill_split_people');
       render();
@@ -384,11 +395,25 @@
       const res=people.map((p,i)=>({name:p.name,note:p.note,base:Number(p.amount)||0,pay:shares[i]}));
       const sumBase=res.reduce((a,b)=>a+b.base,0);
       const sumPay=res.reduce((a,b)=>a+b.pay,0);
-      const rows=res.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="right">$${money(r.base)}</td><td class="right">$${money(r.pay)}</td><td class="right">$${money(r.pay-r.base)}</td></tr>`).join('');
+      const rows=res.map(r=>`
+         <tr>
+           <td>${escapeHtml(r.name)}</td>
+           <td class="right">$${money(r.base)}</td>
+           <td class="right">$${money(r.pay - r.base)}</td>
+           <td class="right">$${money(r.pay)}</td>
+         </tr>`).join('');
+       
       showResults(
-        `<p><span class="pill">Method: Proportional split (largest remainder method)</span></p>
-         <table>
-           <thead><tr><th>Name</th><th class="right">Subtotal</th><th class="right">Pay</th><th class="right">Tax+Tip</th></tr></thead>
+        `<table>
+           <thead>
+            <tr>
+              <th class="col-name">Name</th>
+              <th class="col-sub">Subtotal</th>
+              <th class="col-note">Tax+Tip</th>
+              <th class="col-action">Pay</th>
+            </tr>
+           </thead>
+
            <tbody>${rows}</tbody>
          </table>
          <div class="totals">
@@ -404,8 +429,8 @@
          </div>`
       );
       $('#downloadBtn')?.addEventListener('click',()=>{
-        const lines=['Name,Subtotal,Pay,Tax+Tip']
-          .concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay)},${money(r.pay-r.base)}`));
+        const lines=['Name,Subtotal,Tax+Tip,Pay']
+          .concat(res.map(r=>`${csv(r.name)},${money(r.base)},${money(r.pay - r.base)},${money(r.pay)}`));
         const blob=new Blob(["\ufeff"+lines.join('\n')],{type:'text/csv;charset=utf-8'});
         const a=document.createElement('a');
         a.href=URL.createObjectURL(blob);
@@ -413,6 +438,7 @@
         a.click();
         URL.revokeObjectURL(a.href);
       });
+      
     });
 
     function csv(s){
