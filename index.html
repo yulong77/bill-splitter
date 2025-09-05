@@ -149,6 +149,12 @@
           <label>Pre-tax subtotal<span style="color:red">*</span></label>
           <input id="amountInput" type="number" step="0.01" min="0" placeholder="e.g. 18.99" />
         </div>
+
+        <div class="grow">
+          <label>Note (optional)</label>
+          <input id="noteInput" type="text" placeholder="e.g. Double Cheeseburger" />
+        </div>
+
         <div style="width:180px;align-self:end">
           <button class="btn-primary" id="addBtn" style="width:120px; justify-content:center;">Add</button>
         </div>
@@ -302,8 +308,9 @@
       if(addBtn) {
         addBtn.addEventListener('click', () => {
           console.log('Add button clicked'); // Debug log
-          const nameInput = $('#nameInput');
+          const nameInput   = $('#nameInput');
           const amountInput = $('#amountInput');
+          const noteInput   = $('#noteInput');
           
           if(!nameInput || !amountInput) {
             console.error('Input elements not found');
@@ -312,6 +319,7 @@
           
           const name = nameInput.value.trim();
           const amt = Number(amountInput.value);
+          const note = noteInput ? noteInput.value.trim() : '';
           
           console.log('Input values:', {name, amt}); // Debug log
           
@@ -325,9 +333,10 @@
           }
           
           try {
-            people.push({name, amount: amt, note:''});
+            people.push({name, amount: amt, note: note});
             nameInput.value = '';
             amountInput.value = '';
+            if(noteInput) noteInput.value = '';
             console.log('Person added:', {name, amount: amt}); // Debug log
             render();
           } catch(err) {
