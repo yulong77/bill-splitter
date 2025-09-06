@@ -223,7 +223,8 @@
     </div>
 
     <div class="footer">
-      © 2025 Yulong · Bill Splitter · All rights reserved.
+      © 2025 Yulong · Bill Splitter<br>
+        Version: 1.0.3 · Last updated: Sep 5, 2025 · MIT License
     </div>
   </div>
 
@@ -293,19 +294,20 @@
 
     async function load() {
       try {
-        // try cloud load first
         const response = await fetch(AWS_CONFIG.API_ENDPOINT);
         if (response.ok) {
           const data = await response.json();
-          if (data.people && data.people.length > 0) {
+          if (data && Array.isArray(data.people)) {
+            // Load from cloud successful
+            localStorage.setItem('bill_split_people', JSON.stringify(data.people));
             return data.people;
           }
         }
       } catch (err) {
         console.error('Cloud load failed:', err);
       }
-      
-      // fallback to localStorage
+    
+      // If cloud load fails, fallback to localStorage
       try {
         return JSON.parse(localStorage.getItem('bill_split_people') || '[]');
       } catch {
