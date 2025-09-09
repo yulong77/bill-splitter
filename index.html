@@ -1,3 +1,17 @@
+<!--
+  Project: Bill Splitter
+  Description: A simple front-end tool for splitting restaurant bills.
+               Users can enter their name and pre-tax amount, and the app
+               calculates the fair share for each participant.
+               The backend is deployed on AWS (API Gateway + Lambda + DynamoDB).
+  
+  Author: Yulong Feng
+  Date: September 2025
+  
+  License: MIT License
+  Copyright (c) 2025 Yulong Feng
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -233,7 +247,7 @@
       API_ENDPOINT: 'https://3e3cfirsie.execute-api.us-east-1.amazonaws.com/'
     };
 
-    // === Cloud I/O: 旧后端（根路径 GET/POST）===
+    // === Cloud I/O: GET/POST JSON ===
     async function cloudGet() {
       const r = await fetch(AWS_CONFIG.API_ENDPOINT);
       if (!r.ok) throw new Error('cloudGet failed');
@@ -250,7 +264,7 @@
       if (!r.ok) throw new Error('cloudSave failed: ' + r.status);
     }
   
-    // === 合并并集 + 去重：优先 id；无 id 用 (name,amount,note) 签名 ===
+    // === Merge with de-duplication by id or signature ===
     function signature(p){
       return `${(p.name||'').trim().toLowerCase()}|${Number(p.amount)||0}|${(p.note||'').trim().toLowerCase()}`;
     }
@@ -354,23 +368,23 @@
             return; 
           }
           
-          // 客户端生成 id（兼容无 crypto.randomUUID 的环境）
+          // Custom unique ID generation
           const myId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
                       : (Date.now() + '-' + Math.random().toString(36).slice(2));
           const myItem = { id: myId, name, amount: amt, note };
           
           try {
-            // 1) 拉云端最新
+            // 1) Pull latest from cloud
             const latest = await cloudGet();
-            // 2) 合并（去重并集：不会把别人刚写的覆盖掉）
+            // 2) Merge with local + de-duplication
             const merged = mergeUnion(latest, [myItem]);
-            // 3) 写回整表
+            // 3) Write back to cloud
             await cloudSave(merged);
-            // 4) 再拉一次确认并刷新本地
+            // 4) Confirm by re-fetching
             const after = await cloudGet();
             people = after;
             render();
-            // 清输入框
+            // Clear text boxes
             nameInput.value = ''; amountInput.value = ''; if(noteInput) noteInput.value = '';
             toast('Added');
           } catch (err) {
@@ -390,7 +404,7 @@
         try {
           const latest = await cloudGet();
           let next = latest;
-          // 优先用 id 删除；没有 id 就用签名删除第一条匹配项
+          // Use id if available, else use signature for matching
           if (row && row.id) {
             next = latest.filter(p => p.id !== row.id);
           } else {
@@ -443,7 +457,7 @@
     async function wipeAll() {
       if(!confirm('Permanently delete ALL data (server + local)?')) return;
       try {
-        await cloudSave([]); // 云端清空
+        await cloudSave([]); // Clear cloud data
         people = [];
         localStorage.removeItem('bill_split_people');
         render();
