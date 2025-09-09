@@ -233,6 +233,50 @@
       API_ENDPOINT: 'https://3e3cfirsie.execute-api.us-east-1.amazonaws.com/'
     };
 
+    // === Cloud I/O: 旧后端（根路径 GET/POST）===
+    async function cloudGet() {
+      const r = await fetch(AWS_CONFIG.API_ENDPOINT);
+      if (!r.ok) throw new Error('cloudGet failed');
+      const data = await r.json();
+      return Array.isArray(data.people) ? data.people : [];
+    }
+  
+    async function cloudSave(peopleArray) {
+      const r = await fetch(AWS_CONFIG.API_ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ people: peopleArray })
+      });
+      if (!r.ok) throw new Error('cloudSave failed: ' + r.status);
+    }
+  
+    // === 合并并集 + 去重：优先 id；无 id 用 (name,amount,note) 签名 ===
+    function signature(p){
+      return `${(p.name||'').trim().toLowerCase()}|${Number(p.amount)||0}|${(p.note||'').trim().toLowerCase()}`;
+    }
+  
+    function mergeUnion(existingList, addedList){
+      const byId = new Map();
+      const bySig = new Map();
+  
+      const upsert = (p) => {
+        if (p && typeof p === 'object') {
+          if (p.id) byId.set(p.id, p);
+          else bySig.set(signature(p), p);
+        }
+      };
+  
+      existingList.forEach(upsert);
+      addedList.forEach(upsert);
+  
+      const withId = Array.from(byId.values());
+      const onlySig = Array.from(bySig.entries())
+        .filter(([sig, p]) => !withId.some(x => x.id ? x.id === p.id : signature(x) === sig))
+        .map(([_, p]) => p);
+  
+      return withId.concat(onlySig);
+    }
+  
     const $ = sel => document.querySelector(sel);
     const tbody = $('#tbody');
     const preTotals = $('#preTotals');
@@ -258,67 +302,33 @@
       preTotals.innerHTML = `
         <span class="pill">People: ${people.length}</span>
         <span class="pill">Subtotal sum: $${money(sum)}</span>`;
-      save();
+      saveLocal();
+    }
+
+    function saveLocal() {
+      localStorage.setItem('bill_split_people', JSON.stringify(people));
     }
 
     function escapeHtml(s){
       return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]))
     }
 
-    async function save() {
-      try {
-        console.log('Starting save operation with data:', people);
-        const response = await fetch(AWS_CONFIG.API_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ people })
-        });
-        
-        console.log('Response status:', response.status);
-        const responseData = await response.text();
-        console.log('Response data:', responseData);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        localStorage.setItem('bill_split_people', JSON.stringify(people));
-        console.log('Save successful');
-      } catch (err) {
-        console.error('Save failed:', err);
-        localStorage.setItem('bill_split_people', JSON.stringify(people));
-      }
-    }
-
     async function load() {
       try {
-        const response = await fetch(AWS_CONFIG.API_ENDPOINT);
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.people)) {
-            // Load from cloud successful
-            localStorage.setItem('bill_split_people', JSON.stringify(data.people));
-            return data.people;
-          }
-        }
+        const cloud = await cloudGet();
+        localStorage.setItem('bill_split_people', JSON.stringify(cloud));
+        return cloud;
       } catch (err) {
         console.error('Cloud load failed:', err);
-      }
-    
-      // If cloud load fails, fallback to localStorage
-      try {
-        return JSON.parse(localStorage.getItem('bill_split_people') || '[]');
-      } catch {
-        return [];
+        try { return JSON.parse(localStorage.getItem('bill_split_people') || '[]'); }
+        catch { return []; }
       }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       const addBtn = $('#addBtn');
       if(addBtn) {
-        addBtn.addEventListener('click', () => {
+        addBtn.addEventListener('click', async () => {
           console.log('Add button clicked'); // Debug log
           const nameInput   = $('#nameInput');
           const amountInput = $('#amountInput');
@@ -344,26 +354,64 @@
             return; 
           }
           
+          // 客户端生成 id（兼容无 crypto.randomUUID 的环境）
+          const myId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+                      : (Date.now() + '-' + Math.random().toString(36).slice(2));
+          const myItem = { id: myId, name, amount: amt, note };
+          
           try {
-            people.push({name, amount: amt, note: note});
-            nameInput.value = '';
-            amountInput.value = '';
-            if(noteInput) noteInput.value = '';
-            console.log('Person added:', {name, amount: amt}); // Debug log
+            // 1) 拉云端最新
+            const latest = await cloudGet();
+            // 2) 合并（去重并集：不会把别人刚写的覆盖掉）
+            const merged = mergeUnion(latest, [myItem]);
+            // 3) 写回整表
+            await cloudSave(merged);
+            // 4) 再拉一次确认并刷新本地
+            const after = await cloudGet();
+            people = after;
             render();
-          } catch(err) {
-            console.error('Save failed:', err);
-            alert('Save failed: ' + (err?.message || err));
-            localStorage.setItem('bill_split_people', JSON.stringify(people));
+            // 清输入框
+            nameInput.value = ''; amountInput.value = ''; if(noteInput) noteInput.value = '';
+            toast('Added');
+          } catch (err) {
+            console.error('Add failed:', err);
+            alert('Add failed: ' + (err?.message || err));
           }
         });
       }
     });
 
-    tbody.addEventListener('click', e=>{
+    tbody.addEventListener('click', async e=>{
       const i = e.target.getAttribute('data-i');
       if(i===null) return;
-      if(e.target.classList.contains('del')){ people.splice(Number(i),1); render(); return; }
+
+      if(e.target.classList.contains('del')){
+        const row = people[Number(i)];
+        try {
+          const latest = await cloudGet();
+          let next = latest;
+          // 优先用 id 删除；没有 id 就用签名删除第一条匹配项
+          if (row && row.id) {
+            next = latest.filter(p => p.id !== row.id);
+          } else {
+            let removed = false;
+            next = [];
+            for (const p of latest) {
+              if (!removed && !p?.id && signature(p) === signature(row)) { removed = true; continue; }
+              next.push(p);
+            }
+          }
+          await cloudSave(next);
+          const after = await cloudGet();
+          people = after;
+          render();
+          toast('Deleted');
+        } catch (err) {
+          alert('Delete failed: ' + (err?.message || err));
+        }
+        return;
+      }
+
       if(e.target.classList.contains('edit')){
         const p = people[i];
         const name = prompt('Name', p.name);
@@ -392,19 +440,23 @@
       return flooredCents.map(c=>c/100);
     }
 
-    function wipeAll() {
-      if(!confirm('Permanently delete all data on this device? This will clear the list, totals, localStorage and results.')) return;
-      people = [];
-      localStorage.removeItem('bill_split_people');
-      render();
-      ['grandTotal','taxRate','tipRate'].forEach(id=>{
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-      });
-      showResults('');
-      toast('All data deleted');
+    async function wipeAll() {
+      if(!confirm('Permanently delete ALL data (server + local)?')) return;
+      try {
+        await cloudSave([]); // 云端清空
+        people = [];
+        localStorage.removeItem('bill_split_people');
+        render();
+        ['grandTotal','taxRate','tipRate'].forEach(id=>{
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        showResults('');
+        toast('All data deleted');
+      } catch (err) {
+        alert('Delete-all failed: ' + (err?.message || err));
+      }
     }
-
 
     $('#calcBtn').addEventListener('click',()=>{
       const grand=Number($('#grandTotal').value);
